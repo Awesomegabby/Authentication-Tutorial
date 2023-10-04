@@ -4,7 +4,9 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
+
 const app = express();
 
 app.use(bodyParser.urlencoded({extended: true}));
@@ -16,9 +18,6 @@ const userSchema = new mongoose.Schema({
     email: String,
     password: String
 });
-
-const secret = process.env.SECRET;
-userSchema.plugin(encrypt, { secret: secret, encryptedFields: ["password"] });
 
 const User = mongoose.model("User", userSchema);
 
@@ -36,32 +35,37 @@ app.get("/register", (req, res) => {
 
 app.post("/register", async (req, res) => {
     try {
+        const hashedPassword = await bcrypt.hash(req.body.password, saltRounds);
         const newUser = new User({
             email: req.body.username,
-            password: req.body.password
+            password: hashedPassword
         });
         await newUser.save();
+        res.render("secrets");
     } catch (err) {
         console.log(err);
-    } finally {
-        res.render("secrets");
     }
 });
 
 app.post("/login", async (req, res) => {
-    const username = req.body.username;
-    const password = req.body.password;
-    const foundUsername = await User.findOne(
-        {email: username}
-    ).catch((err) => console.log(err));
-    if (foundUsername) {
-        const foundPassword = await User.findOne(
-            {password: password}
-        ).catch((err) => console.log(err));
-        res.render("secrets");
-    } else {
-        res.send("Wrong login details");
+    try {
+        const username = req.body.username;
+        const password = req.body.password;
+        const foundUsername = await User.findOne(
+            {email: username}
+        )
+        if (foundUsername) {
+            const foundHashedPassword = await bcrypt.compare(password, foundUsername.password);
+            if (foundHashedPassword) {
+                res.render("secrets");
+            } else {
+                res.send("Wrong login details");
+            }
+        } 
+    } catch (err) {
+         console.log(err)
     }
+    
 });
 
 app.listen(3000, () => {
